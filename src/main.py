@@ -2,13 +2,29 @@ import cv2
 import mediapipe as mp
 import pyautogui
 import math
+import time
 #import datetime
+
+
+gesture_counter={}
+feedback_text=""
+feedback_time = 0
+last_gesture = None
+
+
+def show_feedback(frame):
+    global feedback_text, feedback_time
+    if feedback_text and time.time() - feedback_time < 5:
+        cv2.putText(frame, feedback_text, (50,50),cv2.FONT_HERSHEY_SIMPLEX,
+                    1.2,(0,255,0),3,cv2.LINE_AA)
+        
+
 
 def distance(p1,p2):
     return math.hypot(p2[0]-p1[0], p2[1]-p1[1])
 
 
-def getposition(lm,w,h,prev_x,prev_y,smoothening):
+def getposition(lm,w,h,prev_x,prev_y,smoothening,deadzone = 5):
     screen_w, screen_h = pyautogui.size()
     x, y = lm[8]
     frame_x_min, frame_x_max = int(w*0.2), int(w*0.8)
@@ -23,6 +39,9 @@ def getposition(lm,w,h,prev_x,prev_y,smoothening):
 
     c_x = prev_x + (screen_x-prev_x)/ smoothening
     c_y = prev_y +(screen_y- prev_y)/smoothening
+
+    if abs(c_x - prev_x)< deadzone  and abs(c_y-prev_y) < deadzone:
+        return prev_x, prev_y
 
     return(c_x,c_y)
 
@@ -44,7 +63,7 @@ def main():
     prev_x, prev_y =0,0
     smoothening = 3
 
-    last_gesture = None
+
     scroll_start_y = None
     pinch_active = False
     scrolling = False
@@ -108,6 +127,7 @@ def main():
                     elif fingers ==[0,1,1,1,0]:
                         gesture = "THREEUP"
                      
+                    show_feedback(frame)
 
                     # ?  MAIN ACTIONS -------------------------------------------
 
@@ -116,29 +136,21 @@ def main():
                         pyautogui.moveTo(curr_x,curr_y,duration=0)
                         prev_x, prev_y = curr_x,curr_y
 
-                        if distance(lm[8],lm[12]) < 40:
+                        if distance(lm[8],lm[12]) < 20:
                             if not pinch_active:
                                 pyautogui.doubleClick()
                                 pinch_active= True
                         else:
                             pinch_active = False
                     
-                    elif gesture == "THREEUP" and gesture != last_gesture:
-                        pyautogui.click()
+                    elif gesture == "INDEX" and gesture != last_gesture:
+                        pyautogui.leftClick()
                     
                     elif gesture == "PINKY" and gesture != last_gesture:
                         pyautogui.rightClick()
                     
-                    elif gesture == "INDEX" and gesture != last_gesture:
-                        pyautogui.screenshot(r"C:\Users\DELL\OneDrive\Desktop\screen.png")
 
-                        # timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                        # filename = f"C:/Users/DELL/OneDrive/Desktop/screen_{timestamp}.png"
-                        # pyautogui.screenshot(filename)
-
-                    # ? ---- DRAGGING and drop ---------
-
-                    if gesture == "FIST":
+                    elif gesture == "FIST" and gesture != last_gesture:
                        
 
                         if not dragging:
@@ -148,12 +160,14 @@ def main():
                         curr_x,curr_y = getposition(lm,w,h,prev_x,prev_y,smoothening)
                         pyautogui.moveTo(curr_x,curr_y,duration=0)
                         prev_x,prev_y=curr_x,curr_y
+                        
                     elif gesture == "PALM" and dragging:
                         pyautogui.mouseUp()
                         dragging = False
 
+
                     #? ---- SCROLL -----
-                    if gesture == "THUMB UP":
+                    elif gesture == "THUMB UP":
                         if scroll_start_y is None:
                             scroll_start_y = lm[8][1]
                         dy = scroll_start_y - lm[8][1]
@@ -163,9 +177,11 @@ def main():
                     
                     else:
                         scroll_start_y = None
-                     
+                    
 
-                    last_gesture =  gesture
+                    # ? ---- DRAGGING and drop ---------
+
+                    last_gesture = gesture
                     print(f"Gesture: {gesture}, Fingers: {fingers} {dragging}")
                     
 
