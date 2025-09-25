@@ -21,6 +21,7 @@ def show_feedback(frame):
 
 
 def distance(p1,p2):
+    print(math.hypot(p2[0]-p1[0], p2[1]-p1[1]))
     return math.hypot(p2[0]-p1[0], p2[1]-p1[1])
 
 
@@ -71,7 +72,7 @@ def main():
 
     with mp_hands.Hands (
         max_num_hands = 2,
-        min_detection_confidence = 0.5,
+        min_detection_confidence = 0.7,
         min_tracking_confidence =0.5 ) as hands:
 
         while True:
@@ -136,7 +137,7 @@ def main():
                         pyautogui.moveTo(curr_x,curr_y,duration=0)
                         prev_x, prev_y = curr_x,curr_y
 
-                        if distance(lm[8],lm[12]) < 20:
+                        if distance(lm[8],lm[12]) < 24:
                             if not pinch_active:
                                 pyautogui.doubleClick()
                                 pinch_active= True
@@ -150,14 +151,14 @@ def main():
                         pyautogui.rightClick()
                     
 
-                    elif gesture == "FIST" and gesture != last_gesture:
+                    elif gesture == "FIST":
                        
 
                         if not dragging:
                             pyautogui.mouseDown()
                             dragging= True
 
-                        curr_x,curr_y = getposition(lm,w,h,prev_x,prev_y,smoothening)
+                        curr_x,curr_y = getposition(lm,w,h,prev_x,prev_y,smoothening,deadzone=0)
                         pyautogui.moveTo(curr_x,curr_y,duration=0)
                         prev_x,prev_y=curr_x,curr_y
                         
