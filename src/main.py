@@ -9,11 +9,68 @@ from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 import screen_brightness_control as sbc
 import numpy as np
 
+import tkinter as tk
+import threading
+
 # --------- Globals / helpers ----------
 gesture_counter = {}
 feedback_text = ""
 feedback_time = 0
 last_gesture = None
+
+volume_mode = False
+brightness_mode = False
+exit_flag = False
+
+
+def gui_thread():
+    global volume_mode, brightness_mode, exit_flag
+
+    def toggle_volume():
+        global volume_mode,brightness_mode
+        volume_mode = not volume_mode
+        if volume_mode:
+            brightness_mode= False
+        bright_btn.config(text=f"Brightness Mode: {'OFF'}")
+        vol_btn.config(text=f"Volume Mode: {'ON' if volume_mode else 'OFF'}")
+
+    def toggle_brightness():
+        global brightness_mode,volume_mode
+        brightness_mode = not brightness_mode
+        if brightness_mode:
+            volume_mode=False
+        vol_btn.config(text=f"Volume Mode : {'OFF'}")
+        bright_btn.config(text=f"Brightness Mode: {'ON' if brightness_mode else 'OFF'}")
+
+
+    def quit_app():
+        global exit_flag
+        exit_flag = True
+        volume_mode = False
+        brightness_mode = False
+        vol_btn.config(text="Volume Mode: OFF")
+        bright_btn.config(text="Brightness Mode: OFF")
+        root.destroy()
+
+    root = tk.Tk()
+    root.title("Virtual Mouse Controls")
+
+    vol_btn = tk.Button(root, text="Volume Mode: OFF", command=toggle_volume, width=25)
+    vol_btn.pack(pady=10)
+
+    bright_btn = tk.Button(root, text="Brightness Mode: OFF", command=toggle_brightness, width=25)
+    bright_btn.pack(pady=10)
+
+    exit_btn = tk.Button(root, text="Exit", command=quit_app, width=25)
+    exit_btn.pack(pady=10)
+
+    root.mainloop()
+
+# Run Tkinter in a separate thread
+threading.Thread(target=gui_thread, daemon=True).start()
+
+
+
 
 def distance(p1, p2):
     return math.hypot(p2[0] - p1[0], p2[1] - p1[1])
@@ -21,8 +78,8 @@ def distance(p1, p2):
 def getposition(lm, w, h, prev_x, prev_y, smoothening, deadzone=5):
     screen_w, screen_h = pyautogui.size()
     x, y = lm[8]
-    frame_x_min, frame_x_max = int(w * 0.2), int(w * 0.8)
-    frame_y_min, frame_y_max = int(h * 0.2), int(h * 0.8)
+    frame_x_min, frame_x_max = int(w * 0.25), int(w * 0.75)
+    frame_y_min, frame_y_max = int(h * 0.25), int(h * 0.75)
 
     x = min(max(x, frame_x_min), frame_x_max)
     y = min(max(y, frame_y_min), frame_y_max)
@@ -52,7 +109,7 @@ def main():
 
     pyautogui.FAILSAFE = False
     prev_x, prev_y = 0, 0
-    smoothening = 3
+    smoothening = 5
 
     scroll_start_y = None
     pinch_active = False
@@ -145,7 +202,7 @@ def main():
                         pyautogui.moveTo(curr_x, curr_y, duration=0)
                         prev_x, prev_y = curr_x, curr_y
 
-                        if distance(lm[8], lm[12]) < 40:
+                        if distance(lm[8], lm[12]) < 30:
                             if not pinch_active:
                                 pyautogui.doubleClick()
                                 pinch_active = True
@@ -184,45 +241,101 @@ def main():
                             scroll_start_y = None
 
                     # ----------- VOLUME (Pinch activate + Move Y) -------------
-                    vol_pinch_dist = distance(lm[4], lm[8])
-                    if vol_pinch_dist < 40:
-                        if not volume_pinch_active:
+                    if volume_mode:
+                        vol_pinch_dist = distance(lm[4], lm[8])
+
+                        # activate pinch (store start values only once)
+                        if vol_pinch_dist < 40 and not volume_pinch_active:
                             volume_pinch_active = True
                             volume_start_y = (lm[4][1] + lm[8][1]) / 2
-                            volume_level_start = volume.GetMasterVolumeLevel()
-                        else:
+                            volume_level_start = volume.GetMasterVolumeLevel()  # absolute start dB
+                            last_set_volume = volume_level_start
+                            last_reset_time = time.time() 
+
+                        # adjust volume while pinching
+                        if volume_pinch_active:
                             current_y = (lm[4][1] + lm[8][1]) / 2
                             delta = volume_start_y - current_y
-                            delta_scaled = np.interp(delta, [-200, 200], [-10, 10])
-                            new_level = np.clip(volume_level_start + delta_scaled, min_vol, max_vol)
-                            volume.SetMasterVolumeLevel(new_level, None)
-                            vol_percent = int(np.interp(new_level, [min_vol, max_vol], [0, 100]))
-                            on_screen_texts.append((f"Volume: {vol_percent}%", (50, 120), (255, 0, 0)))
-                    else:
-                        volume_pinch_active = False
+
+                            # ignore very small Y motion
+                            if abs(delta) > 6:
+                                # map movement to absolute dB change from the start level
+                                delta_scaled = np.interp(delta, [-100, 100], [-10.0, 10.0])  # slower change
+                                desired_level = np.clip(volume_level_start + delta_scaled, min_vol, max_vol)
+
+                                # only set if change is meaningful (hysteresis in dB)
+                                DB_STEP = 0.4  # change at least 0.4 dB to commit
+                                if abs(desired_level - last_set_volume) >= DB_STEP:
+                                    volume.SetMasterVolumeLevel(desired_level, None)
+                                    last_set_volume = desired_level
+
+                                # show percentage using last_set_volume (the value we actually wrote)
+                                    vol_percent = int(np.interp(last_set_volume, [min_vol, max_vol], [0, 100]))
+                                    # on_screen_texts.append((f"Volume: {vol_percent}%", (50, 120), (255, 0, 0)))
+                                    feedback_text = f"Volume: {vol_percent}%"
+                                    feedback_time = time.time()
+                                    if time.time() - last_reset_time > 0.3:
+                                        volume_start_y = current_y
+                                        volume_level_start = desired_level
+                                        last_reset_time = time.time()
+
+                            # deactivate pinch
+                            if vol_pinch_dist > 80:
+                                volume_pinch_active = False
+                        else:
+                            volume_pinch_active = False
+
+                    # if volume_mode:
+                        
+                    #     vol_pinch_dist = distance(lm[4], lm[8])
+                    #     if vol_pinch_dist < 40 and not volume_pinch_active:
+                    #             volume_pinch_active = True
+                    #             volume_start_y = (lm[4][1] + lm[8][1]) / 2
+                    #             # volume_level_start = volume.GetMasterVolumeLevel()
+                    #     if volume_pinch_active:
+                    #         current_y = (lm[4][1] + lm[8][1]) / 2
+                    #         delta = volume_start_y - current_y
+                    #         if abs(delta)>8:
+
+                    #             delta_scaled = np.interp(delta, [-250, 250], [-2, 2])
+                    #             volume_level_start = volume.GetMasterVolumeLevel()
+                    #             new_level = np.clip(volume_level_start + delta_scaled, min_vol, max_vol)
+                    #             volume.SetMasterVolumeLevel(new_level, None)
+                    #             vol_percent = int(np.interp(new_level, [min_vol, max_vol], [0, 100]))
+                    #             on_screen_texts.append((f"Volume: {vol_percent}%", (50, 120), (255, 0, 0)))
+                    #     if vol_pinch_dist > 80:
+                    #         volume_pinch_active = False
+                    # else:
+                    #     volume_pinch_active = False
 
                     # ----------- BRIGHTNESS (Pinch activate + Move Y) -------------
-                    bright_pinch_dist = distance(lm[4], lm[12])
-                    if bright_pinch_dist < 40:
-                        if not brightness_pinch_active:
-                            brightness_pinch_active = True
-                            brightness_start_y = (lm[4][1] + lm[12][1]) / 2
-                            try:
-                                brightness_level_start = sbc.get_brightness(display=0)[0]
-                            except:
-                                brightness_level_start = 50
+                    if brightness_mode and not volume_mode:
+                        
+        
+                        bright_pinch_dist = distance(lm[4], lm[12])
+                        if bright_pinch_dist < 40:
+                            if not brightness_pinch_active:
+                                brightness_pinch_active = True
+                                brightness_start_y = (lm[4][1] + lm[12][1]) / 2
+                                try:
+                                    brightness_level_start = sbc.get_brightness(display=0)[0]
+                                except:
+                                    brightness_level_start = 50
+                            else:
+                                current_y = (lm[4][1] + lm[12][1]) / 2
+                                delta = brightness_start_y - current_y
+                                delta_scaled = np.interp(delta, [-200, 200], [-100, 100])
+                                new_bright = np.clip(brightness_level_start + delta_scaled, 0, 100)
+                                try:
+                                    sbc.set_brightness(int(new_bright))
+                                except Exception:
+                                    pass
+                                on_screen_texts.append((f"Brightness: {int(new_bright)}%", (50, 160), (0, 255, 255)))
                         else:
-                            current_y = (lm[4][1] + lm[12][1]) / 2
-                            delta = brightness_start_y - current_y
-                            delta_scaled = np.interp(delta, [-200, 200], [-100, 100])
-                            new_bright = np.clip(brightness_level_start + delta_scaled, 0, 100)
-                            try:
-                                sbc.set_brightness(int(new_bright))
-                            except Exception:
-                                pass
-                            on_screen_texts.append((f"Brightness: {int(new_bright)}%", (50, 160), (0, 255, 255)))
+                            brightness_pinch_active = False
                     else:
                         brightness_pinch_active = False
+
 
                     last_gesture = gesture
 
@@ -234,8 +347,8 @@ def main():
 
             # ROI box
             h, w, _ = frame.shape
-            frame_x_min, frame_x_max = int(w * 0.2), int(w * 0.8)
-            frame_y_min, frame_y_max = int(h * 0.2), int(h * 0.8)
+            frame_x_min, frame_x_max = int(w * 0.25), int(w * 0.75)
+            frame_y_min, frame_y_max = int(h * 0.25), int(h * 0.75)
             cv2.rectangle(frame, (frame_x_min, frame_y_min), (frame_x_max, frame_y_max), (0, 255, 0), 2)
 
             # Flip for mirror view
