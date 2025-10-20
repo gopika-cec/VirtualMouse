@@ -106,8 +106,3 @@ Press **Enter** to exit the camera window.
 
 ---
 
-
-
-
-Would you like me to generate a `requirements.txt` file from the imports automatically?
-I can also add installation notes specific to **Windows/Linux** for the `pycaw` and `screen-brightness-control` dependencies.
