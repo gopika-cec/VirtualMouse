@@ -1,6 +1,3 @@
-Perfect — you’ve provided the full source code for your **Virtual Mouse** project. Based on this, here’s a complete, professional **README.md** file you can include in your repository 👇
-
----
 
 # 🖱️ Virtual Mouse
 
