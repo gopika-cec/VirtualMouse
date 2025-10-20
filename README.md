@@ -15,19 +15,13 @@ The project also includes a **GUI controller** for toggling *Volume* and *Bright
 
 ## ✨ Features
 
-✅ Control mouse movement with hand gestures
-✅ Left, right, and double-click recognition
-✅ Smooth cursor movement and dragging support
-✅ Scroll using “Thumb Up” gesture
-✅ Adjust **system volume** and **screen brightness** with pinch gestures
-✅ Simple **Tkinter GUI** for mode toggling (Volume / Brightness)
-✅ Works in real time using your webcam
-
----
-
-## 🎥 Demo
-
-> *(You can insert a GIF or YouTube link here to show the gestures in action.)*
+✅ Control mouse movement with hand gestures  
+✅ Left, right, and double-click recognition  
+✅ Smooth cursor movement and dragging support  
+✅ Scroll using “Thumb Up” gesture  
+✅ Adjust **system volume** and **screen brightness** with pinch gestures  
+✅ Simple **Tkinter GUI** for mode toggling (Volume / Brightness)  
+✅ Works in real time using your webcam  
 
 ---
 
